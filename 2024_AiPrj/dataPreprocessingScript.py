@@ -18,3 +18,4 @@ df['embedding'] = df['유저'].map(lambda x: list(model.encode(x).tolist())) #�
 #처리된 데이터 Excel 저장
 df.to_csv("PreprocessingData.csv",index=False)
 
+
