@@ -3,34 +3,82 @@ import pandas as pd
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import json
+import openai
 
 app = Flask(__name__)
+
+# OpenAI API 키 설정 (유효한 키로 변경 필요)
+openai.api_key = ''
+
 # 모델 로드
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
 # 데이터 로드
-df = pd.read_csv('PreprocessingData.csv')  # 데이터 파일
-df['embedding'] = df['embedding'].apply(json.loads)  # JSON 문자열을 리스트로 변환
+DATA_FILE = 'PreprocessingData.csv'
+df = pd.read_csv(DATA_FILE)
+df['embedding'] = df['embedding'].apply(json.loads)
+
+# ChatGPT 응답 생성 함수
+def get_gpt_response(user_input):
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": user_input}
+            ],
+            max_tokens=100,
+            temperature=0.7
+        )
+        return response['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        print(f"Error with GPT API: {e}")
+        return "죄송합니다. 현재 응답을 생성할 수 없습니다."
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    user_input = request.json.get('message', '')
-    embedding = model.encode(user_input)  # 입력 텍스트 임베딩
+    global df  # 전역 데이터프레임 업데이트
+    user_input = request.json.get('message', '')  # 사용자 입력 메시지
+    embedding = model.encode(user_input)  # 입력 텍스트 임베딩 생성
     df['distance'] = df['embedding'].map(lambda x: cosine_similarity([embedding], [x]).squeeze())
-    answer = df.loc[df['distance'].idxmax()]  # 가장 유사한 응답 찾기
+    max_similarity = df['distance'].max()
+    answer = df.loc[df['distance'].idxmax()]  # 가장 유사한 질문 가져오기
 
+    # 유사도가 70% 이하인 경우 GPT로 응답 생성
+    if max_similarity < 0.70:
+        bot_answer = get_gpt_response(user_input)
+        category = "GPT-Generated"  # 새로운 데이터의 기본 카테고리
+        similarity = max_similarity
+
+        # 새로운 데이터 추가
+        new_entry = {
+            '구분': category,
+            '유저': user_input,
+            '챗봇': bot_answer,
+            'embedding': json.dumps(embedding.tolist())
+        }
+        df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+
+        # CSV 파일로 데이터 저장
+        new_file_name = 'UpdatedDataset.csv'  # 저장될 새로운 파일 이름
+        df.to_csv(new_file_name, index=False, encoding='utf-8-sig')  # UTF-8 인코딩으로 CSV 저장
+
+    else:
+        bot_answer = answer['챗봇']
+        category = answer['구분']
+        similarity = max_similarity
+
+    # 응답 반환
     response = {
-        'category': answer['구분'],
-        'bot_answer': answer['챗봇'],
-        'similarity': answer['distance']
+        'category': category,
+        'bot_answer': bot_answer,
+        'similarity': similarity
     }
     return jsonify(response)
 
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index.html')  # HTML 파일 서빙
+    return send_from_directory('.', 'index.html')  # HTML 파일 반환
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
