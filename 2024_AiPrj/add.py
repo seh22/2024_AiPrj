@@ -13,7 +13,7 @@ openai.api_key = ''
 # 모델 로드
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
-# 데이터 로드
+# 데이터 로드 df 데이터 프레임에 저장
 DATA_FILE = 'PreprocessingData.csv'
 df = pd.read_csv(DATA_FILE)
 df['embedding'] = df['embedding'].apply(json.loads)
@@ -22,13 +22,13 @@ df['embedding'] = df['embedding'].apply(json.loads)
 def get_gpt_response(user_input):
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "system", "content": "너는 상담가야 상담시 줄 수 있는 짧은 답변을 줘"},
                 {"role": "user", "content": user_input}
             ],
-            max_tokens=100,
-            temperature=0.7
+            max_tokens=200,
+            temperature=0.6
         )
         return response['choices'][0]['message']['content'].strip()
     except Exception as e:
@@ -44,8 +44,8 @@ def chat():
     max_similarity = df['distance'].max()
     answer = df.loc[df['distance'].idxmax()]  # 가장 유사한 질문 가져오기
 
-    # 유사도가 70% 이하인 경우 GPT로 응답 생성
-    if max_similarity < 0.70:
+    # 유사도가 90% 이하인 경우 GPT로 응답 생성
+    if max_similarity < 0.90:
         bot_answer = get_gpt_response(user_input)
         category = "GPT-Generated"  # 새로운 데이터의 기본 카테고리
         similarity = max_similarity
@@ -57,11 +57,12 @@ def chat():
             '챗봇': bot_answer,
             'embedding': json.dumps(embedding.tolist())
         }
-        df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+        user_df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
 
+        print(user_df)
         # CSV 파일로 데이터 저장
-        new_file_name = 'UpdatedDataset.csv'  # 저장될 새로운 파일 이름
-        df.to_csv(new_file_name, index=False, encoding='utf-8-sig')  # UTF-8 인코딩으로 CSV 저장
+        # new_file_name = 'UpdatedDataset.csv'  # 저장될 새로운 파일 이름
+        # df.to_csv(new_file_name, index=False, encoding='utf-8-sig')  # UTF-8 인코딩으로 CSV 저장
 
     else:
         bot_answer = answer['챗봇']
@@ -82,3 +83,4 @@ def index():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
